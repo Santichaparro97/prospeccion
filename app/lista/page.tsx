@@ -5,7 +5,7 @@ import Papa from "papaparse";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { Button, Card, EmptyState, Field, Spinner, Toast } from "@/components/ui";
-import { RUBROS, type ListaItem } from "@/lib/types";
+import { RUBROS, estadoLista, type ListaItem } from "@/lib/types";
 import {
   eliminarCarpeta,
   getLista,
@@ -14,7 +14,7 @@ import {
   marcarNoContacto,
   resetItem,
 } from "@/lib/db";
-import { fmtFechaCorta } from "@/lib/format";
+import { fmtFechaCorta, isoAFechaAR } from "@/lib/format";
 
 const PAGE = 24;
 
@@ -145,7 +145,7 @@ export default function ListaPage() {
 
   async function onHablar(item: ListaItem) {
     if (item.hablado) return;
-    patch(item.id, { hablado: true, descartado: false, fecha_hablado: new Date().toISOString() });
+    patch(item.id, { hablado: true, fecha_hablado: new Date().toISOString() });
     try {
       await marcarHablado(item);
     } catch (e) {
@@ -155,9 +155,9 @@ export default function ListaPage() {
   }
 
   async function onX(item: ListaItem) {
-    if (item.descartado) {
+    if (estadoLista(item) === "cancelado") {
       // deshacer -> pendiente
-      patch(item.id, { descartado: false, hablado: false, fecha_hablado: null });
+      patch(item.id, { hablado: false, fecha_hablado: null });
       try {
         await resetItem(item);
         flash("Vuelto a pendiente");
@@ -166,11 +166,11 @@ export default function ListaPage() {
         flash(e instanceof Error ? e.message : "Error");
       }
     } else {
-      // marcar no contacto (quita de la estadística si estaba hablado)
-      patch(item.id, { descartado: true, hablado: false, fecha_hablado: null });
+      // cancelar: pasa a "no contacto" y deja de contar
+      patch(item.id, { hablado: false, fecha_hablado: new Date().toISOString() });
       try {
         await marcarNoContacto(item);
-        flash("Marcado como no contacto");
+        flash("Cancelado · no contacto");
       } catch (e) {
         await load();
         flash(e instanceof Error ? e.message : "Error");
@@ -203,11 +203,16 @@ export default function ListaPage() {
   const colDer = pageItems.slice(12, 24);
 
   function renderItem(item: ListaItem, absIndex: number) {
+    const estado = estadoLista(item);
     return (
       <div
         key={item.id}
         className={`flex items-center gap-3 px-4 py-3 ${
-          item.hablado ? "bg-green/5" : item.descartado ? "bg-red/5" : "hover:bg-bg-elev-2"
+          estado === "contactado"
+            ? "bg-green/5"
+            : estado === "cancelado"
+              ? "bg-red/5"
+              : "hover:bg-bg-elev-2"
         }`}
       >
         <span className="w-6 shrink-0 text-right text-xs text-fg-dim tabular">{absIndex}</span>
@@ -217,9 +222,9 @@ export default function ListaPage() {
           rel="noopener noreferrer"
           onClick={() => onHablar(item)}
           className={`min-w-0 flex-1 truncate text-sm ${
-            item.descartado
+            estado === "cancelado"
               ? "text-fg-dim line-through"
-              : item.hablado
+              : estado === "contactado"
                 ? "text-fg-dim"
                 : "text-accent hover:underline"
           }`}
@@ -227,7 +232,7 @@ export default function ListaPage() {
         >
           {item.nombre ? (
             <>
-              <span className={item.hablado || item.descartado ? "" : "text-fg"}>{item.nombre}</span>{" "}
+              <span className={estado === "pendiente" ? "text-fg" : ""}>{item.nombre}</span>{" "}
               <span className="text-fg-dim">· {item.url}</span>
             </>
           ) : (
@@ -235,13 +240,13 @@ export default function ListaPage() {
           )}
         </a>
 
-        {/* estado: ✓ hablado / outline pendiente / nada si descartado */}
-        {item.descartado ? (
+        {/* estado: ✓ contactado / outline pendiente / "No contacto" si cancelado */}
+        {estado === "cancelado" ? (
           <span className="text-xs font-medium text-red/80">No contacto</span>
-        ) : item.hablado ? (
+        ) : estado === "contactado" ? (
           <span className="flex items-center gap-1 text-xs font-medium text-green">
             <span className="flex h-5 w-5 items-center justify-center rounded-md bg-green/20">✓</span>
-            {item.fecha_hablado && fmtFechaCorta(item.fecha_hablado.slice(0, 10))}
+            {item.fecha_hablado && fmtFechaCorta(isoAFechaAR(item.fecha_hablado))}
           </span>
         ) : (
           <span className="flex h-5 w-5 items-center justify-center rounded-md border border-border-soft text-transparent">
@@ -249,12 +254,12 @@ export default function ListaPage() {
           </span>
         )}
 
-        {/* X: marcar/deshacer no contacto */}
+        {/* X: cancelar / deshacer */}
         <button
           onClick={() => onX(item)}
-          title={item.descartado ? "Deshacer (volver a pendiente)" : "No le hablé / no contacto"}
+          title={estado === "cancelado" ? "Deshacer (volver a pendiente)" : "Cancelar / no contacto"}
           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-xs transition-colors ${
-            item.descartado
+            estado === "cancelado"
               ? "bg-red/20 text-red"
               : "border border-border-soft text-fg-dim hover:border-red/50 hover:text-red"
           }`}

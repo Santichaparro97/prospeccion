@@ -28,6 +28,11 @@ export function fmtFechaCorta(iso: string): string {
   return `${d} ${MESES[m - 1]}`;
 }
 
+/** Timestamp ISO -> "YYYY-MM-DD" en horario Argentina */
+export function isoAFechaAR(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(iso));
+}
+
 export function mesLargo(m: number): string {
   return MESES_LARGO[m];
 }

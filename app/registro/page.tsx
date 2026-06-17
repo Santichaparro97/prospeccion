@@ -4,8 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { Card, EmptyState, Spinner } from "@/components/ui";
-import type { Cierre, Contactado, DiaRegistro } from "@/lib/types";
-import { getCierres, getContactados, registroDiario } from "@/lib/db";
+import type { Cierre, Contactado, DiaRegistro, ListaItem } from "@/lib/types";
+import {
+  getCierres,
+  getContactados,
+  getLista,
+  listaComoContactados,
+  registroDiario,
+} from "@/lib/db";
 import { fmtFechaCorta } from "@/lib/format";
 
 export default function RegistroPage() {
@@ -16,11 +22,12 @@ export default function RegistroPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [c, k]: [Contactado[], Cierre[]] = await Promise.all([
+      const [c, k, l]: [Contactado[], Cierre[], ListaItem[]] = await Promise.all([
         getContactados(),
         getCierres(),
+        getLista(),
       ]);
-      setDias(registroDiario(c, k));
+      setDias(registroDiario([...c, ...listaComoContactados(l)], k));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cargar.");
     } finally {

@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { hoyAR } from "./format";
+import { hoyAR, isoAFechaAR } from "./format";
 import type {
   Cierre,
   Contactado,
@@ -94,47 +94,46 @@ export async function importarLista(
   return insertados;
 }
 
-/** Marca un item como hablado (contactado) y suma 1 a 'contactados'. */
+/** Abrir el perfil lo marca como contactado (cuenta en estadísticas). */
 export async function marcarHablado(item: ListaItem): Promise<void> {
   if (item.hablado) return; // idempotente
-  // impacta en estadísticas, ligado al item para poder revertir
-  const { error: e2 } = await supabase
-    .from("contactados")
-    .insert({ fecha: hoyAR(), rubro: item.rubro, cantidad: 1, lista_id: item.id });
-  if (e2) throw e2;
   const { error } = await supabase
     .from("lista")
-    .update({ hablado: true, descartado: false, fecha_hablado: new Date().toISOString() })
+    .update({ hablado: true, fecha_hablado: new Date().toISOString() })
     .eq("id", item.id);
   if (error) throw error;
 }
 
-/** Marca "no contacto" (X): quita el contactado de la estadística y descarta. */
+/** ✕ Cancela: pasa a "no contacto" y deja de contar en estadísticas. */
 export async function marcarNoContacto(item: ListaItem): Promise<void> {
-  const { error: e2 } = await supabase
-    .from("contactados")
-    .delete()
-    .eq("lista_id", item.id);
-  if (e2) throw e2;
   const { error } = await supabase
     .from("lista")
-    .update({ hablado: false, descartado: true, fecha_hablado: null })
+    .update({ hablado: false, fecha_hablado: new Date().toISOString() })
     .eq("id", item.id);
   if (error) throw error;
 }
 
 /** Vuelve un item al estado inicial (pendiente). */
 export async function resetItem(item: ListaItem): Promise<void> {
-  const { error: e2 } = await supabase
-    .from("contactados")
-    .delete()
-    .eq("lista_id", item.id);
-  if (e2) throw e2;
   const { error } = await supabase
     .from("lista")
-    .update({ hablado: false, descartado: false, fecha_hablado: null })
+    .update({ hablado: false, fecha_hablado: null })
     .eq("id", item.id);
   if (error) throw error;
+}
+
+/** Convierte los perfiles "hablado" de la lista en contactados sintéticos,
+ *  para que cuenten en las estadísticas sin duplicar datos. */
+export function listaComoContactados(lista: ListaItem[]): Contactado[] {
+  return lista
+    .filter((i) => i.hablado)
+    .map((i) => ({
+      id: -i.id,
+      fecha: i.fecha_hablado ? isoAFechaAR(i.fecha_hablado) : hoyAR(),
+      rubro: i.rubro,
+      cantidad: 1,
+      created_at: i.fecha_hablado ?? new Date().toISOString(),
+    }));
 }
 
 /** Elimina la carpeta (borra sus perfiles; no toca las estadísticas ya generadas). */

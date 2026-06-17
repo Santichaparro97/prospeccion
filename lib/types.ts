@@ -15,7 +15,6 @@ export interface Contactado {
   fecha: string; // YYYY-MM-DD
   rubro: string;
   cantidad: number;
-  lista_id: number | null;
   created_at: string;
 }
 
@@ -35,10 +34,21 @@ export interface ListaItem {
   url: string;
   nombre: string | null;
   rubro: string;
-  hablado: boolean;
-  descartado: boolean;
+  hablado: boolean; // true = contactado (cuenta en estadísticas)
+  // Estado derivado de (hablado, fecha_hablado), sin columnas nuevas:
+  //   pendiente  -> hablado=false, fecha_hablado=null
+  //   contactado -> hablado=true,  fecha_hablado=set
+  //   cancelado  -> hablado=false, fecha_hablado=set  ("no contacto")
   fecha_hablado: string | null;
   created_at: string;
+}
+
+export type EstadoLista = "pendiente" | "contactado" | "cancelado";
+
+export function estadoLista(i: ListaItem): EstadoLista {
+  if (i.hablado) return "contactado";
+  if (i.fecha_hablado) return "cancelado";
+  return "pendiente";
 }
 
 export interface Perfil {

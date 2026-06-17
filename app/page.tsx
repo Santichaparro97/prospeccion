@@ -4,13 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { Button, Card, EmptyState, Field, Spinner, StatCard, Toast } from "@/components/ui";
-import { RUBROS, type Cierre, type Contactado } from "@/lib/types";
+import { RUBROS, type Cierre, type Contactado, type ListaItem } from "@/lib/types";
 import {
   calcularTotales,
   contactadosPorFecha,
   getCierres,
   getContactados,
+  getLista,
   guardarCierre,
+  listaComoContactados,
   sumarContactados,
   totalesHoy,
 } from "@/lib/db";
@@ -25,6 +27,7 @@ const FUN = [
 export default function Dashboard() {
   const [contactados, setContactados] = useState<Contactado[]>([]);
   const [cierres, setCierres] = useState<Cierre[]>([]);
+  const [lista, setLista] = useState<ListaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -47,9 +50,10 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [c, k] = await Promise.all([getContactados(), getCierres()]);
+      const [c, k, l] = await Promise.all([getContactados(), getCierres(), getLista()]);
       setContactados(c);
       setCierres(k);
+      setLista(l);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cargar.");
     } finally {
@@ -61,8 +65,13 @@ export default function Dashboard() {
     load();
   }, [load]);
 
-  const t = useMemo(() => calcularTotales(contactados, cierres), [contactados, cierres]);
-  const hoy = useMemo(() => totalesHoy(contactados, cierres), [contactados, cierres]);
+  // los perfiles "hablado" de la lista cuentan como contactados
+  const allContactados = useMemo(
+    () => [...contactados, ...listaComoContactados(lista)],
+    [contactados, lista]
+  );
+  const t = useMemo(() => calcularTotales(allContactados, cierres), [allContactados, cierres]);
+  const hoy = useMemo(() => totalesHoy(allContactados, cierres), [allContactados, cierres]);
 
   async function onSumar() {
     const n = parseInt(cant);
@@ -114,7 +123,7 @@ export default function Dashboard() {
   const { y, m, d: today } = hoyPartesAR();
   const offset = new Date(y, m, 1).getDay();
   const dim = new Date(y, m + 1, 0).getDate();
-  const porFecha = contactadosPorFecha(contactados);
+  const porFecha = contactadosPorFecha(allContactados);
   const porDiaMes: Record<number, number> = {};
   for (const [f, v] of Object.entries(porFecha)) {
     const [yy, mm, dd] = f.split("-").map(Number);
