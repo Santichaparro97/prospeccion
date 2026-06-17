@@ -15,6 +15,7 @@ export interface Contactado {
   fecha: string; // YYYY-MM-DD
   rubro: string;
   cantidad: number;
+  lista_id: number | null;
   created_at: string;
 }
 
@@ -35,6 +36,7 @@ export interface ListaItem {
   nombre: string | null;
   rubro: string;
   hablado: boolean;
+  descartado: boolean;
   fecha_hablado: string | null;
   created_at: string;
 }

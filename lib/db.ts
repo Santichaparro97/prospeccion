@@ -83,22 +83,51 @@ export async function importarLista(
   return insertados;
 }
 
-/** Marca un item como hablado y suma 1 a 'contactados' del rubro de la lista. */
+/** Marca un item como hablado (contactado) y suma 1 a 'contactados'. */
 export async function marcarHablado(item: ListaItem): Promise<void> {
   if (item.hablado) return; // idempotente
-  const { error } = await supabase
-    .from("lista")
-    .update({ hablado: true, fecha_hablado: new Date().toISOString() })
-    .eq("id", item.id);
-  if (error) throw error;
-  // impacta en estadísticas
+  // impacta en estadísticas, ligado al item para poder revertir
   const { error: e2 } = await supabase
     .from("contactados")
-    .insert({ fecha: hoyAR(), rubro: item.rubro, cantidad: 1 });
+    .insert({ fecha: hoyAR(), rubro: item.rubro, cantidad: 1, lista_id: item.id });
   if (e2) throw e2;
+  const { error } = await supabase
+    .from("lista")
+    .update({ hablado: true, descartado: false, fecha_hablado: new Date().toISOString() })
+    .eq("id", item.id);
+  if (error) throw error;
 }
 
-export async function vaciarCarpeta(carpeta: string): Promise<void> {
+/** Marca "no contacto" (X): quita el contactado de la estadística y descarta. */
+export async function marcarNoContacto(item: ListaItem): Promise<void> {
+  const { error: e2 } = await supabase
+    .from("contactados")
+    .delete()
+    .eq("lista_id", item.id);
+  if (e2) throw e2;
+  const { error } = await supabase
+    .from("lista")
+    .update({ hablado: false, descartado: true, fecha_hablado: null })
+    .eq("id", item.id);
+  if (error) throw error;
+}
+
+/** Vuelve un item al estado inicial (pendiente). */
+export async function resetItem(item: ListaItem): Promise<void> {
+  const { error: e2 } = await supabase
+    .from("contactados")
+    .delete()
+    .eq("lista_id", item.id);
+  if (e2) throw e2;
+  const { error } = await supabase
+    .from("lista")
+    .update({ hablado: false, descartado: false, fecha_hablado: null })
+    .eq("id", item.id);
+  if (error) throw error;
+}
+
+/** Elimina la carpeta (borra sus perfiles; no toca las estadísticas ya generadas). */
+export async function eliminarCarpeta(carpeta: string): Promise<void> {
   const { error } = await supabase.from("lista").delete().eq("carpeta", carpeta);
   if (error) throw error;
 }

@@ -9,9 +9,11 @@ create table if not exists contactados (
   fecha       date not null default (now() at time zone 'America/Argentina/Buenos_Aires'),
   rubro       text not null,
   cantidad    int  not null check (cantidad > 0),
+  lista_id    bigint,  -- si vino de un perfil de la lista (para poder revertir)
   created_at  timestamptz not null default now()
 );
 create index if not exists idx_contactados_fecha on contactados(fecha);
+create index if not exists idx_contactados_lista on contactados(lista_id);
 
 -- Fin del día: cada cierre inserta una fila (append-only, se suman).
 create table if not exists cierres (
@@ -34,7 +36,8 @@ create table if not exists lista (
   url            text not null,
   nombre         text,
   rubro          text not null,
-  hablado        boolean not null default false,
+  hablado        boolean not null default false,  -- true = contactado
+  descartado     boolean not null default false,  -- true = "no contacto" (X)
   fecha_hablado  timestamptz,
   created_at     timestamptz not null default now()
 );

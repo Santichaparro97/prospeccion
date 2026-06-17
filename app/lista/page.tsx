@@ -7,14 +7,16 @@ import { ConfigBanner } from "@/components/ConfigBanner";
 import { Button, Card, EmptyState, Field, Spinner, Toast } from "@/components/ui";
 import { RUBROS, type ListaItem } from "@/lib/types";
 import {
+  eliminarCarpeta,
   getLista,
   importarLista,
   marcarHablado,
-  vaciarCarpeta,
+  marcarNoContacto,
+  resetItem,
 } from "@/lib/db";
 import { fmtFechaCorta } from "@/lib/format";
 
-const PAGE = 25;
+const PAGE = 24;
 
 function pareceUrl(s: string): boolean {
   if (!s) return false;
@@ -42,7 +44,6 @@ export default function ListaPage() {
   const [page, setPage] = useState(0);
   const [carpetaActiva, setCarpetaActiva] = useState<string | null>(null);
 
-  // import
   const [parsed, setParsed] = useState<{ url: string; nombre: string | null }[]>([]);
   const [rubro, setRubro] = useState<string>(RUBROS[0]);
   const [modo, setModo] = useState<"nueva" | "existente">("nueva");
@@ -71,7 +72,6 @@ export default function ListaPage() {
     load();
   }, [load]);
 
-  // carpetas con conteo
   const carpetas = useMemo(() => {
     const m: Record<string, { total: number; hablados: number }> = {};
     for (const i of items) {
@@ -83,7 +83,6 @@ export default function ListaPage() {
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [items]);
 
-  // mantener una carpeta activa válida
   useEffect(() => {
     if (carpetas.length === 0) {
       setCarpetaActiva(null);
@@ -92,7 +91,6 @@ export default function ListaPage() {
     }
   }, [carpetas, carpetaActiva]);
 
-  // si no hay carpetas, forzamos modo "nueva"
   useEffect(() => {
     if (carpetas.length === 0 && modo === "existente") setModo("nueva");
     if (carpetas.length > 0 && !carpetaDestino) setCarpetaDestino(carpetas[0].nombre);
@@ -121,8 +119,7 @@ export default function ListaPage() {
 
   async function onImportar() {
     if (parsed.length === 0) return;
-    const destino =
-      modo === "nueva" ? nuevaCarpeta.trim() : carpetaDestino;
+    const destino = modo === "nueva" ? nuevaCarpeta.trim() : carpetaDestino;
     if (!destino) return flash("Indicá un nombre de carpeta");
     setImportando(true);
     try {
@@ -141,33 +138,55 @@ export default function ListaPage() {
     }
   }
 
+  // patch local optimista
+  function patch(id: number, p: Partial<ListaItem>) {
+    setItems((prev) => prev.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  }
+
   async function onHablar(item: ListaItem) {
     if (item.hablado) return;
-    setItems((prev) =>
-      prev.map((x) =>
-        x.id === item.id
-          ? { ...x, hablado: true, fecha_hablado: new Date().toISOString() }
-          : x
-      )
-    );
+    patch(item.id, { hablado: true, descartado: false, fecha_hablado: new Date().toISOString() });
     try {
       await marcarHablado(item);
-      flash("Marcado como hablado ✓ (+1 contactado)");
     } catch (e) {
       await load();
       flash(e instanceof Error ? e.message : "Error al marcar");
     }
   }
 
-  async function onVaciar() {
+  async function onX(item: ListaItem) {
+    if (item.descartado) {
+      // deshacer -> pendiente
+      patch(item.id, { descartado: false, hablado: false, fecha_hablado: null });
+      try {
+        await resetItem(item);
+        flash("Vuelto a pendiente");
+      } catch (e) {
+        await load();
+        flash(e instanceof Error ? e.message : "Error");
+      }
+    } else {
+      // marcar no contacto (quita de la estadística si estaba hablado)
+      patch(item.id, { descartado: true, hablado: false, fecha_hablado: null });
+      try {
+        await marcarNoContacto(item);
+        flash("Marcado como no contacto");
+      } catch (e) {
+        await load();
+        flash(e instanceof Error ? e.message : "Error");
+      }
+    }
+  }
+
+  async function onEliminar() {
     if (!carpetaActiva) return;
-    if (!confirm(`¿Vaciar la carpeta "${carpetaActiva}"? (no borra tus estadísticas)`))
+    if (!confirm(`¿Eliminar la carpeta "${carpetaActiva}" y todos sus perfiles? (no borra estadísticas ya generadas)`))
       return;
     try {
-      await vaciarCarpeta(carpetaActiva);
+      await eliminarCarpeta(carpetaActiva);
       setPage(0);
       await load();
-      flash("Carpeta vaciada");
+      flash("Carpeta eliminada");
     } catch (e) {
       flash(e instanceof Error ? e.message : "Error");
     }
@@ -180,16 +199,81 @@ export default function ListaPage() {
   const hablados = itemsCarpeta.filter((i) => i.hablado).length;
   const totalPaginas = Math.max(Math.ceil(itemsCarpeta.length / PAGE), 1);
   const pageItems = itemsCarpeta.slice(page * PAGE, page * PAGE + PAGE);
+  const colIzq = pageItems.slice(0, 12);
+  const colDer = pageItems.slice(12, 24);
+
+  function renderItem(item: ListaItem, absIndex: number) {
+    return (
+      <div
+        key={item.id}
+        className={`flex items-center gap-3 px-4 py-3 ${
+          item.hablado ? "bg-green/5" : item.descartado ? "bg-red/5" : "hover:bg-bg-elev-2"
+        }`}
+      >
+        <span className="w-6 shrink-0 text-right text-xs text-fg-dim tabular">{absIndex}</span>
+        <a
+          href={aHref(item.url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => onHablar(item)}
+          className={`min-w-0 flex-1 truncate text-sm ${
+            item.descartado
+              ? "text-fg-dim line-through"
+              : item.hablado
+                ? "text-fg-dim"
+                : "text-accent hover:underline"
+          }`}
+          title={item.url}
+        >
+          {item.nombre ? (
+            <>
+              <span className={item.hablado || item.descartado ? "" : "text-fg"}>{item.nombre}</span>{" "}
+              <span className="text-fg-dim">· {item.url}</span>
+            </>
+          ) : (
+            item.url
+          )}
+        </a>
+
+        {/* estado: ✓ hablado / outline pendiente / nada si descartado */}
+        {item.descartado ? (
+          <span className="text-xs font-medium text-red/80">No contacto</span>
+        ) : item.hablado ? (
+          <span className="flex items-center gap-1 text-xs font-medium text-green">
+            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-green/20">✓</span>
+            {item.fecha_hablado && fmtFechaCorta(item.fecha_hablado.slice(0, 10))}
+          </span>
+        ) : (
+          <span className="flex h-5 w-5 items-center justify-center rounded-md border border-border-soft text-transparent">
+            ✓
+          </span>
+        )}
+
+        {/* X: marcar/deshacer no contacto */}
+        <button
+          onClick={() => onX(item)}
+          title={item.descartado ? "Deshacer (volver a pendiente)" : "No le hablé / no contacto"}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-xs transition-colors ${
+            item.descartado
+              ? "bg-red/20 text-red"
+              : "border border-border-soft text-fg-dim hover:border-red/50 hover:text-red"
+          }`}
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8">
       <PageHeader
         title="Lista"
-        subtitle="Importá perfiles en carpetas y hablales de a 25. Cada click abre la URL y suma un contactado."
+        subtitle="Importá perfiles en carpetas y hablales de a 24. Abrir el link marca contactado; la ✕ lo pasa a no contacto."
         actions={
           carpetaActiva ? (
-            <Button variant="ghost" size="sm" onClick={onVaciar}>
-              Vaciar “{carpetaActiva}”
+            <Button variant="danger" size="sm" onClick={onEliminar}>
+              Eliminar “{carpetaActiva}”
             </Button>
           ) : undefined
         }
@@ -209,7 +293,6 @@ export default function ListaPage() {
           En Sheets: Archivo → Descargar → CSV. Detecto la columna de URLs automáticamente.
         </p>
 
-        {/* destino: carpeta nueva o existente */}
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <div>
             <span className="mb-1.5 block text-xs font-medium text-fg-muted">Destino</span>
@@ -278,10 +361,8 @@ export default function ListaPage() {
         {fileName && parsed.length > 0 && (
           <p className="mt-3 text-xs text-fg-muted">
             <strong className="text-fg">{parsed.length}</strong> URLs detectadas en {fileName}. Irán a la carpeta{" "}
-            <strong className="text-fg">
-              {modo === "nueva" ? nuevaCarpeta || "(sin nombre)" : carpetaDestino}
-            </strong>{" "}
-            con rubro <strong className="text-fg">{rubro}</strong>.
+            <strong className="text-fg">{modo === "nueva" ? nuevaCarpeta || "(sin nombre)" : carpetaDestino}</strong> con rubro{" "}
+            <strong className="text-fg">{rubro}</strong>.
           </p>
         )}
       </Card>
@@ -299,9 +380,7 @@ export default function ListaPage() {
                   setPage(0);
                 }}
                 className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                  active
-                    ? "bg-accent-soft font-medium text-fg"
-                    : "text-fg-muted hover:bg-bg-elev-2 hover:text-fg"
+                  active ? "bg-accent-soft font-medium text-fg" : "text-fg-muted hover:bg-bg-elev-2 hover:text-fg"
                 }`}
               >
                 {c.nombre}{" "}
@@ -314,21 +393,18 @@ export default function ListaPage() {
         </div>
       )}
 
-      {/* Lista de la carpeta activa */}
       {loading ? (
         <Spinner />
       ) : carpetas.length === 0 ? (
         <Card>
-          <EmptyState>
-            Todavía no importaste ninguna lista. Subí un CSV arriba y creá tu primera carpeta.
-          </EmptyState>
+          <EmptyState>Todavía no importaste ninguna lista. Subí un CSV arriba y creá tu primera carpeta.</EmptyState>
         </Card>
       ) : (
         <>
           <div className="mb-3 flex items-center justify-between text-sm">
             <span className="text-fg-muted">
-              <strong className="text-fg">{hablados}</strong> de{" "}
-              <strong className="text-fg">{itemsCarpeta.length}</strong> hablados en “{carpetaActiva}”
+              <strong className="text-fg">{hablados}</strong> de <strong className="text-fg">{itemsCarpeta.length}</strong>{" "}
+              hablados en “{carpetaActiva}”
             </span>
             <span className="text-fg-muted">
               Bloque {page + 1} de {totalPaginas}
@@ -341,48 +417,16 @@ export default function ListaPage() {
             />
           </div>
 
-          <Card className="divide-y divide-border overflow-hidden">
-            {pageItems.map((item, i) => (
-              <div
-                key={item.id}
-                className={`flex items-center gap-3 px-4 py-3 ${
-                  item.hablado ? "bg-green/5" : "hover:bg-bg-elev-2"
-                }`}
-              >
-                <span className="w-7 shrink-0 text-right text-xs text-fg-dim tabular">
-                  {page * PAGE + i + 1}
-                </span>
-                <a
-                  href={aHref(item.url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => onHablar(item)}
-                  className={`flex-1 truncate text-sm ${
-                    item.hablado ? "text-fg-dim line-through" : "text-accent hover:underline"
-                  }`}
-                  title={item.url}
-                >
-                  {item.nombre ? (
-                    <>
-                      <span className={item.hablado ? "" : "text-fg"}>{item.nombre}</span>{" "}
-                      <span className="text-fg-dim">· {item.url}</span>
-                    </>
-                  ) : (
-                    item.url
-                  )}
-                </a>
-                {item.hablado ? (
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-green">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-green/20">✓</span>
-                    {item.fecha_hablado && fmtFechaCorta(item.fecha_hablado.slice(0, 10))}
-                  </span>
-                ) : (
-                  <span className="flex h-5 w-5 items-center justify-center rounded-md border border-border-soft text-transparent">
-                    ✓
-                  </span>
-                )}
+          {/* 12 + 12 en PC, apilado en celular */}
+          <Card className="overflow-hidden">
+            <div className="grid grid-cols-1 md:grid-cols-2">
+              <div className="divide-y divide-border">
+                {colIzq.map((it, i) => renderItem(it, page * PAGE + i + 1))}
               </div>
-            ))}
+              <div className="divide-y divide-border md:border-l md:border-border">
+                {colDer.map((it, i) => renderItem(it, page * PAGE + 12 + i + 1))}
+              </div>
+            </div>
           </Card>
 
           <div className="mt-4 flex items-center justify-between">
@@ -394,7 +438,7 @@ export default function ListaPage() {
               {itemsCarpeta.length}
             </span>
             <Button size="sm" disabled={page + 1 >= totalPaginas} onClick={() => setPage((p) => Math.min(p + 1, totalPaginas - 1))}>
-              Siguiente 25 →
+              Siguiente 24 →
             </Button>
           </div>
         </>
