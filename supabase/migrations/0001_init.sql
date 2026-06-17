@@ -30,6 +30,7 @@ create index if not exists idx_cierres_fecha on cierres(fecha);
 -- (rubro = el de la lista), por eso impacta en las estadísticas.
 create table if not exists lista (
   id             bigint generated always as identity primary key,
+  carpeta        text not null default 'General',
   url            text not null,
   nombre         text,
   rubro          text not null,
@@ -39,6 +40,7 @@ create table if not exists lista (
 );
 create index if not exists idx_lista_hablado on lista(hablado);
 create index if not exists idx_lista_id on lista(id);
+create index if not exists idx_lista_carpeta on lista(carpeta);
 
 -- Seguimientos: perfiles puntuales a seguir.
 create table if not exists perfiles (

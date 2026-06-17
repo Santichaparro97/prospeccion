@@ -63,7 +63,8 @@ export async function getLista(): Promise<ListaItem[]> {
 
 export async function importarLista(
   filas: { url: string; nombre: string | null }[],
-  rubro: string
+  rubro: string,
+  carpeta: string
 ): Promise<number> {
   const limpias = filas.filter((f) => f.url.trim());
   if (limpias.length === 0) return 0;
@@ -73,6 +74,7 @@ export async function importarLista(
       url: f.url.trim(),
       nombre: f.nombre?.trim() || null,
       rubro,
+      carpeta,
     }));
     const { data, error } = await supabase.from("lista").insert(lote).select("id");
     if (error) throw error;
@@ -96,8 +98,8 @@ export async function marcarHablado(item: ListaItem): Promise<void> {
   if (e2) throw e2;
 }
 
-export async function vaciarLista(): Promise<void> {
-  const { error } = await supabase.from("lista").delete().neq("id", 0);
+export async function vaciarCarpeta(carpeta: string): Promise<void> {
+  const { error } = await supabase.from("lista").delete().eq("carpeta", carpeta);
   if (error) throw error;
 }
 

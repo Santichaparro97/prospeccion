@@ -30,6 +30,7 @@ export interface Cierre {
 
 export interface ListaItem {
   id: number;
+  carpeta: string;
   url: string;
   nombre: string | null;
   rubro: string;
