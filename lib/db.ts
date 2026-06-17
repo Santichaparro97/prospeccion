@@ -9,14 +9,35 @@ import type {
   Totales,
 } from "./types";
 
+// Trae TODAS las filas paginando por rangos (PostgREST corta en 1000 por
+// request). Sin esto, al acumular muchos contactos el dashboard subcontaría.
+async function fetchAll<T>(
+  table: string,
+  columns: string,
+  order: { col: string; asc: boolean }
+): Promise<T[]> {
+  const SIZE = 1000;
+  let from = 0;
+  const all: T[] = [];
+  for (;;) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(columns)
+      .order(order.col, { ascending: order.asc })
+      .range(from, from + SIZE - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as T[];
+    all.push(...batch);
+    if (batch.length < SIZE) break;
+    from += SIZE;
+  }
+  return all;
+}
+
 // ---------------- CONTACTADOS ----------------
 export async function getContactados(): Promise<Contactado[]> {
-  const { data, error } = await supabase
-    .from("contactados")
-    .select("*")
-    .order("fecha", { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  // select "*" para no depender de columnas opcionales (p. ej. lista_id)
+  return fetchAll<Contactado>("contactados", "*", { col: "fecha", asc: false });
 }
 
 export async function sumarContactados(
@@ -31,12 +52,7 @@ export async function sumarContactados(
 
 // ---------------- CIERRES ----------------
 export async function getCierres(): Promise<Cierre[]> {
-  const { data, error } = await supabase
-    .from("cierres")
-    .select("*")
-    .order("fecha", { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  return fetchAll<Cierre>("cierres", "*", { col: "fecha", asc: false });
 }
 
 export async function guardarCierre(c: {
@@ -53,12 +69,7 @@ export async function guardarCierre(c: {
 
 // ---------------- LISTA (CSV de perfiles a hablar) ----------------
 export async function getLista(): Promise<ListaItem[]> {
-  const { data, error } = await supabase
-    .from("lista")
-    .select("*")
-    .order("id", { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  return fetchAll<ListaItem>("lista", "*", { col: "id", asc: true });
 }
 
 export async function importarLista(
@@ -134,12 +145,7 @@ export async function eliminarCarpeta(carpeta: string): Promise<void> {
 
 // ---------------- PERFILES (seguimientos) ----------------
 export async function getPerfiles(): Promise<Perfil[]> {
-  const { data, error } = await supabase
-    .from("perfiles")
-    .select("*")
-    .order("ultimo_contacto", { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  return fetchAll<Perfil>("perfiles", "*", { col: "ultimo_contacto", asc: true });
 }
 
 export async function agregarPerfil(p: {
