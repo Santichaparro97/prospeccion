@@ -4,6 +4,7 @@ import type {
   Cierre,
   Contactado,
   DiaRegistro,
+  ListaItem,
   Perfil,
   Totales,
 } from "./types";
@@ -47,6 +48,56 @@ export async function guardarCierre(c: {
   const { error } = await supabase
     .from("cierres")
     .insert({ fecha: hoyAR(), ...c });
+  if (error) throw error;
+}
+
+// ---------------- LISTA (CSV de perfiles a hablar) ----------------
+export async function getLista(): Promise<ListaItem[]> {
+  const { data, error } = await supabase
+    .from("lista")
+    .select("*")
+    .order("id", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function importarLista(
+  filas: { url: string; nombre: string | null }[],
+  rubro: string
+): Promise<number> {
+  const limpias = filas.filter((f) => f.url.trim());
+  if (limpias.length === 0) return 0;
+  let insertados = 0;
+  for (let i = 0; i < limpias.length; i += 500) {
+    const lote = limpias.slice(i, i + 500).map((f) => ({
+      url: f.url.trim(),
+      nombre: f.nombre?.trim() || null,
+      rubro,
+    }));
+    const { data, error } = await supabase.from("lista").insert(lote).select("id");
+    if (error) throw error;
+    insertados += data?.length ?? 0;
+  }
+  return insertados;
+}
+
+/** Marca un item como hablado y suma 1 a 'contactados' del rubro de la lista. */
+export async function marcarHablado(item: ListaItem): Promise<void> {
+  if (item.hablado) return; // idempotente
+  const { error } = await supabase
+    .from("lista")
+    .update({ hablado: true, fecha_hablado: new Date().toISOString() })
+    .eq("id", item.id);
+  if (error) throw error;
+  // impacta en estadísticas
+  const { error: e2 } = await supabase
+    .from("contactados")
+    .insert({ fecha: hoyAR(), rubro: item.rubro, cantidad: 1 });
+  if (e2) throw e2;
+}
+
+export async function vaciarLista(): Promise<void> {
+  const { error } = await supabase.from("lista").delete().neq("id", 0);
   if (error) throw error;
 }
 

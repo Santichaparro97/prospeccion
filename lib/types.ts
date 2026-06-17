@@ -28,6 +28,16 @@ export interface Cierre {
   created_at: string;
 }
 
+export interface ListaItem {
+  id: number;
+  url: string;
+  nombre: string | null;
+  rubro: string;
+  hablado: boolean;
+  fecha_hablado: string | null;
+  created_at: string;
+}
+
 export interface Perfil {
   id: number;
   handle: string;

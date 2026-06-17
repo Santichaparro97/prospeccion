@@ -25,6 +25,21 @@ create table if not exists cierres (
 );
 create index if not exists idx_cierres_fecha on cierres(fecha);
 
+-- Lista: perfiles importados desde CSV para ir hablándoles.
+-- Al marcar 'hablado' se inserta además una fila en 'contactados'
+-- (rubro = el de la lista), por eso impacta en las estadísticas.
+create table if not exists lista (
+  id             bigint generated always as identity primary key,
+  url            text not null,
+  nombre         text,
+  rubro          text not null,
+  hablado        boolean not null default false,
+  fecha_hablado  timestamptz,
+  created_at     timestamptz not null default now()
+);
+create index if not exists idx_lista_hablado on lista(hablado);
+create index if not exists idx_lista_id on lista(id);
+
 -- Seguimientos: perfiles puntuales a seguir.
 create table if not exists perfiles (
   id               bigint generated always as identity primary key,
