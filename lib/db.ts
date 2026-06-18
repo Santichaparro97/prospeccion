@@ -6,6 +6,7 @@ import type {
   DiaRegistro,
   ListaItem,
   Perfil,
+  Speech,
   Totales,
 } from "./types";
 
@@ -139,6 +140,32 @@ export function listaComoContactados(lista: ListaItem[]): Contactado[] {
 /** Elimina la carpeta (borra sus perfiles; no toca las estadísticas ya generadas). */
 export async function eliminarCarpeta(carpeta: string): Promise<void> {
   const { error } = await supabase.from("lista").delete().eq("carpeta", carpeta);
+  if (error) throw error;
+}
+
+// ---------------- SPEECH (mensajes de prospección) ----------------
+export async function getSpeeches(): Promise<Speech[]> {
+  return fetchAll<Speech>("speech", "*", { col: "created_at", asc: false });
+}
+
+export async function agregarSpeech(s: {
+  titulo: string | null;
+  texto: string;
+}): Promise<void> {
+  const { error } = await supabase.from("speech").insert(s);
+  if (error) throw error;
+}
+
+export async function editarSpeech(
+  id: number,
+  s: { titulo: string | null; texto: string }
+): Promise<void> {
+  const { error } = await supabase.from("speech").update(s).eq("id", id);
+  if (error) throw error;
+}
+
+export async function borrarSpeech(id: number): Promise<void> {
+  const { error } = await supabase.from("speech").delete().eq("id", id);
   if (error) throw error;
 }
 

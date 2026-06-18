@@ -44,6 +44,14 @@ create index if not exists idx_lista_hablado on lista(hablado);
 create index if not exists idx_lista_id on lista(id);
 create index if not exists idx_lista_carpeta on lista(carpeta);
 
+-- Speech: mensajes de prospección guardados para copiar y pegar.
+create table if not exists speech (
+  id          bigint generated always as identity primary key,
+  titulo      text,
+  texto       text not null,
+  created_at  timestamptz not null default now()
+);
+
 -- Seguimientos: perfiles puntuales a seguir.
 create table if not exists perfiles (
   id               bigint generated always as identity primary key,

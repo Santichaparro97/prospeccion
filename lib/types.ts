@@ -51,6 +51,13 @@ export function estadoLista(i: ListaItem): EstadoLista {
   return "pendiente";
 }
 
+export interface Speech {
+  id: number;
+  titulo: string | null;
+  texto: string;
+  created_at: string;
+}
+
 export interface Perfil {
   id: number;
   handle: string;
